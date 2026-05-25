@@ -1,0 +1,101 @@
+import { useState, useEffect } from 'react';
+import { C, INIT } from './constants.js';
+import { genSpark } from './utils.js';
+
+import Ticker        from './components/Ticker.jsx';
+import Heatmap       from './components/Heatmap.jsx';
+import ScenarioPanel from './components/ScenarioPanel.jsx';
+import NewsPulse     from './components/NewsPulse.jsx';
+import OilGauge      from './components/OilGauge.jsx';
+import Methodology   from './components/Methodology.jsx';
+import { Mono }      from './components/Primitives.jsx';
+
+// Generate sparklines once on mount (stable across re-renders)
+const SPARKS = {
+  oil:   genSpark(INIT.oil,   0.018),
+  usd:   genSpark(INIT.usd,   0.004),
+  gold:  genSpark(INIT.gold,  0.010),
+  sp500: genSpark(INIT.sp500, 0.008),
+};
+
+export default function App() {
+  const [prices,  setPrices]  = useState(INIT);
+  const [changes, setChanges] = useState({ oil: 0.84, usd: -0.21, gold: 0.63, sp500: 0.41 });
+  const [clock,   setClock]   = useState(new Date());
+
+  // Simulated live price tick every 1.8 seconds
+  useEffect(() => {
+    const t = setInterval(() => {
+      setPrices(p => ({
+        oil:   +(p.oil   * (1 + (Math.random() - 0.499) * 0.0008)).toFixed(2),
+        usd:   +(p.usd   * (1 + (Math.random() - 0.499) * 0.0003)).toFixed(2),
+        gold:  +(p.gold  * (1 + (Math.random() - 0.499) * 0.0006)).toFixed(2),
+        sp500: +(p.sp500 * (1 + (Math.random() - 0.499) * 0.0005)).toFixed(2),
+      }));
+      setChanges(c => ({
+        oil:   +(c.oil   + (Math.random() - 0.5) * 0.04).toFixed(3),
+        usd:   +(c.usd   + (Math.random() - 0.5) * 0.02).toFixed(3),
+        gold:  +(c.gold  + (Math.random() - 0.5) * 0.03).toFixed(3),
+        sp500: +(c.sp500 + (Math.random() - 0.5) * 0.03).toFixed(3),
+      }));
+      setClock(new Date());
+    }, 1800);
+    return () => clearInterval(t);
+  }, []);
+
+  return (
+    <div style={{ maxWidth: 960, margin: "0 auto", padding: "0 14px 32px", background: C.bg, minHeight: "100vh" }}>
+
+      {/* ── Header ── */}
+      <div style={{
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        padding: "16px 0 14px", borderBottom: `1px solid ${C.border}`, marginBottom: 14,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 7,
+            background: `linear-gradient(135deg, ${C.accent}, #c07000)`,
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
+          }}>🛢️</div>
+          <div>
+            <p style={{ fontSize: 15, fontWeight: 700, color: C.text, letterSpacing: "-0.02em" }}>MacroLens</p>
+            <p style={{ fontSize: 10, color: C.dim, marginTop: 1 }}>Commodity Scenario & Sentiment Engine · WTI Crude</p>
+          </div>
+        </div>
+
+        <div style={{ textAlign: "right" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 5, justifyContent: "flex-end", marginBottom: 2 }}>
+            <div style={{ width: 5, height: 5, borderRadius: "50%", background: C.green, animation: "blink 2s infinite" }} />
+            <Mono style={{ fontSize: 10, color: C.green }}>LIVE</Mono>
+          </div>
+          <Mono style={{ fontSize: 10, color: C.dim }}>
+            {clock.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} UTC
+          </Mono>
+        </div>
+      </div>
+
+      {/* ── Ticker strip ── */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        <Ticker label="WTI Crude"  value={prices.oil}   unit="$"  change={changes.oil}   spark={SPARKS.oil}   />
+        <Ticker label="USD Index"  value={prices.usd}   unit=""   change={changes.usd}   spark={SPARKS.usd}   />
+        <Ticker label="Gold XAU"   value={prices.gold}  unit="$"  change={changes.gold}  spark={SPARKS.gold}  />
+        <Ticker label="S&P 500"    value={prices.sp500} unit=""   change={changes.sp500} spark={SPARKS.sp500} />
+      </div>
+
+      {/* ── Main grid: heatmap + scenario ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+        <Heatmap />
+        <ScenarioPanel base={prices} />
+      </div>
+
+      {/* ── Bottom row: gauge + news ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "185px 1fr", gap: 10, marginBottom: 10 }}>
+        <OilGauge value={prices.oil} />
+        <NewsPulse />
+      </div>
+
+      {/* ── Methodology footer ── */}
+      <Methodology />
+    </div>
+  );
+}

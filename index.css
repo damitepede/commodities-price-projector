@@ -1,0 +1,121 @@
+import { useState, useEffect } from 'react';
+import { C, FALLBACK_NEWS, FALLBACK_BRIEF } from '../constants.js';
+import { claudeCall } from '../utils.js';
+import { Panel, Label, Mono, SentimentTag } from './Primitives.jsx';
+
+export default function NewsPulse() {
+  const [news, setNews]               = useState([]);
+  const [brief, setBrief]             = useState("");
+  const [loading, setLoading]         = useState(true);
+  const [briefLoading, setBriefLoading] = useState(true);
+  const [sentiment, setSentiment]     = useState({ bullish: 0, bearish: 0, neutral: 0 });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      // ── Step 1: fetch headlines ──────────────────────────────────────────
+      let articles = FALLBACK_NEWS;
+      try {
+        const raw = await claudeCall(
+          `Generate 5 realistic oil market news headlines for May 2026.
+           Return ONLY a JSON array, no markdown, no preamble.
+           Format: [{"headline":"...","sentiment":"bullish","delta":"+0.9%","source":"Reuters","time":"8m ago"}]`
+        );
+        articles = JSON.parse(raw);
+      } catch { /* use fallback */ }
+
+      if (cancelled) return;
+      setNews(articles);
+      const counts = { bullish: 0, bearish: 0, neutral: 0 };
+      articles.forEach(n => { counts[n.sentiment] = (counts[n.sentiment] || 0) + 1; });
+      setSentiment(counts);
+      setLoading(false);
+
+      // ── Step 2: generate briefing note from headlines ────────────────────
+      const headlines = articles.map(n => n.headline).join("; ");
+      try {
+        const b = await claudeCall(
+          `You are a Bloomberg market analyst. Based on these oil market headlines: "${headlines}"
+           Write a 2-sentence client briefing note. Be direct, specific, and actionable. No preamble.`,
+          200
+        );
+        if (!cancelled) setBrief(b);
+      } catch {
+        if (!cancelled) setBrief(FALLBACK_BRIEF);
+      }
+      if (!cancelled) setBriefLoading(false);
+    }
+
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  const total   = Object.values(sentiment).reduce((a, b) => a + b, 0) || 1;
+  const bullPct = Math.round((sentiment.bullish / total) * 100);
+  const bearPct = Math.round((sentiment.bearish / total) * 100);
+
+  return (
+    <Panel>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <div>
+          <p style={{ fontSize: 12, fontWeight: 600, color: C.text }}>News Pulse</p>
+          <p style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>AI-analyzed sentiment</p>
+        </div>
+        <div style={{ display: "flex", gap: 5 }}>
+          <SentimentTag color={C.green}>▲ {bullPct}%</SentimentTag>
+          <SentimentTag color={C.red}>▼ {bearPct}%</SentimentTag>
+        </div>
+      </div>
+
+      {/* Sentiment bar */}
+      <div style={{ height: 3, borderRadius: 2, background: C.border, marginBottom: 12, overflow: "hidden", display: "flex" }}>
+        <div style={{ width: `${bullPct}%`, background: C.green, transition: "width 1s" }} />
+        <div style={{ width: `${bearPct}%`, background: C.red, transition: "width 1s" }} />
+        <div style={{ flex: 1, background: C.muted }} />
+      </div>
+
+      {/* Client briefing */}
+      <div style={{
+        background: `${C.accent}0d`, border: `1px solid ${C.accent}33`,
+        borderRadius: 6, padding: "10px 12px", marginBottom: 12,
+      }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
+          <Label style={{ color: C.accent }}>Client Briefing</Label>
+          {briefLoading && <span style={{ fontSize: 9, color: C.dim }}>generating…</span>}
+        </div>
+        <p style={{ fontSize: 11, color: C.text, lineHeight: 1.6 }}>
+          {briefLoading ? "Synthesizing market signals…" : brief}
+        </p>
+      </div>
+
+      {/* Headlines */}
+      {loading ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {[1, 2, 3].map(i => (
+            <div key={i} style={{ height: 44, background: `${C.border}88`, borderRadius: 4, animation: "shimmer 1.4s infinite" }} />
+          ))}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {news.map((item, i) => {
+            const col = item.sentiment === "bullish" ? C.green : item.sentiment === "bearish" ? C.red : C.muted;
+            return (
+              <div key={i} style={{
+                display: "flex", gap: 8, padding: "8px 10px",
+                background: `${col}0d`, borderLeft: `3px solid ${col}`, borderRadius: "0 4px 4px 0",
+              }}>
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontSize: 11, color: C.text, lineHeight: 1.4, marginBottom: 2 }}>{item.headline}</p>
+                  <span style={{ fontSize: 10, color: C.dim }}>{item.source} · {item.time}</span>
+                </div>
+                <Mono style={{ fontSize: 10, color: col, whiteSpace: "nowrap", paddingTop: 1 }}>{item.delta}</Mono>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Panel>
+  );
+}
